@@ -2,34 +2,33 @@ K=kernel
 U=user
 
 OBJS = \
-  $K/entry.o \
-  $K/start.o \
-  $K/console.o \
-  $K/printf.o \
-  $K/uart.o \
-  $K/kalloc.o \
-  $K/spinlock.o \
-  $K/string.o \
-  $K/main.o \
-  $K/vm.o \
-  $K/proc.o \
-  $K/swtch.o \
-  $K/trampoline.o \
-  $K/trap.o \
-  $K/syscall.o \
-  $K/sysproc.o \
-  $K/bio.o \
-  $K/fs.o \
-  $K/log.o \
-  $K/sleeplock.o \
-  $K/file.o \
-  $K/pipe.o \
-  $K/exec.o \
-  $K/sysfile.o \
-  $K/kernelvec.o \
-  $K/plic.o \
-  $K/virtio_disk.o
-
+	$K/entry.o \
+	$K/start.o \
+	$K/console.o \
+	$K/printf.o \
+	$K/uart.o \
+	$K/kalloc.o \
+	$K/spinlock.o \
+	$K/string.o \
+	$K/main.o \
+	$K/vm.o \
+	$K/proc.o \
+	$K/swtch.o \
+	$K/trampoline.o \
+	$K/trap.o \
+	$K/syscall.o \
+	$K/sysproc.o \
+	$K/bio.o \
+	$K/fs.o \
+	$K/log.o \
+	$K/sleeplock.o \
+	$K/file.o \
+	$K/pipe.o \
+	$K/exec.o \
+	$K/sysfile.o \
+	$K/kernelvec.o \
+	$K/plic.o \
+	$K/virtio_disk.o \
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
 #TOOLPREFIX = 
@@ -84,7 +83,7 @@ $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
 	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
-
+	riscv64-unknown-elf-ld -T kernel/kernel.ld -o $@ $(OBJS)
 $U/initcode: $U/initcode.S
 	$(CC) $(CFLAGS) -march=rv64g -nostdinc -I. -Ikernel -c $U/initcode.S -o $U/initcode.o
 	$(LD) $(LDFLAGS) -N -e start -Ttext 0 -o $U/initcode.out $U/initcode.o
@@ -139,6 +138,9 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_Myprog\
+	$U/_sha256_user\
+	$U/_sha256_syscall
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
@@ -177,4 +179,8 @@ qemu: $K/kernel fs.img
 qemu-gdb: $K/kernel .gdbinit fs.img
 	@echo "*** Now run 'gdb' in another window." 1>&2
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+entry.o: ./kernel/entry.S
+	riscv64-unknown-elf-gcc -c ./kernel/entry.S -o ./entry.o
+
 

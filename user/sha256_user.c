@@ -1,11 +1,5 @@
-#include "types.h"
-#include "riscv.h"
-#include "defs.h"
-#include "param.h"
-#include "memlayout.h"
-#include "spinlock.h"
-#include "proc.h"
-#include "count.h"
+#include "kernel/types.h"
+#include "user/user.h"
 #include <stddef.h>
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
@@ -141,121 +135,60 @@ void print_hash(uint8_t *hash) {
     printf("%s\n", hash_string);
 }
 
-uint64
-sys_shaVal(void)
-{
-  const uint8_t *data = (const uint8_t *)"password";  // Corrected the casting here
-  size_t len = 8;
-  uint8_t hash[32];  // SHA-256 produces a 32-byte (256-bit) hash
+int main(int argc, char *argv[]) {
+    uint8_t hash[32];
 
-  // Call the sha256 function
-  sha256(data, len, hash);
-  print_hash(hash);
-  // Return some indication of success; if you want to use the hash
-  // result in some way, you might consider other return strategies
-  // depending on how sys_shaVal will be used.
-  return 0 ;  // Return 0 to indicate success (or an alternative code as needed)
-}
-
-uint64
-sys_exit(void)
-{
-  int n;
-  argint(0, &n);
-  exit(n);
-  return 0;  // not reached
-}
-
-uint64
-sys_getpid(void)
-{
-  return myproc()->pid;
-}
-
-uint64
-sys_fork(void)
-{
-  return fork();
-}
-
-uint64
-sys_wait(void)
-{
-  uint64 p;
-  argaddr(0, &p);
-  return wait(p);
-}
-
-uint64
-sys_sbrk(void)
-{
-  uint64 addr;
-  int n;
-
-  argint(0, &n);
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
-  return addr;
-}
-
-uint64
-sys_sleep(void)
-{
-  int n;
-  uint ticks0;
-
-  argint(0, &n);
-  if(n < 0)
-    n = 0;
-  acquire(&tickslock);
-  ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(killed(myproc())){
-      release(&tickslock);
-      return -1;
+    if (argc < 2) {
+        printf("Usage: %s <string>\n", argv[0]);
+        exit(1);
     }
-    sleep(&ticks, &tickslock);
-  }
-  release(&tickslock);
-  return 0;
-}
 
-uint64
-sys_kill(void)
-{
-  int pid;
+    // Calculate total length of concatenated input with spaces
+    int total_len = 0;
+    for (int i = 1; i < argc; i++) {
+        for (int j = 0; argv[i][j] != '\0'; j++) {
+            total_len++;
+        }
+        if (i < argc - 1) {
+            total_len++;  // Account for a space between words
+        }
+    }
 
-  argint(0, &pid);
-  return kill(pid);
-}
+    // Allocate memory to store the concatenated input
+    char input[total_len + 1];
+    int pos = 0;
 
-// return how many clock tick interrupts have occurred
-// since start.
-uint64
-sys_uptime(void)
-{
-  uint xticks;
+    // Concatenate all arguments with spaces in between
+    for (int i = 1; i < argc; i++) {
+        for (int j = 0; argv[i][j] != '\0'; j++) {
+            input[pos++] = argv[i][j];
+        }
+        if (i < argc - 1) {
+            input[pos++] = ' ';  // Add a space between arguments
+        }
+    }
+    input[pos] = '\0';  // Null-terminate the concatenated string
 
-  acquire(&tickslock);
-  xticks = ticks;
-  release(&tickslock);
-  return xticks;
-}
+    // Perform SHA-256 on the concatenated input
+    // Display purpose of the program
+    printf("SHA-256 Hash Computation from User Space\n");
+    printf("==========================================\n");
 
-int
-sys_getyear(void)
-{
-return 2003;
-}
+    // Measure cycle count before computation
+    int before = clockcycles() / 10000;
+    printf("Cycle count before computation: %d\n", before);
 
-int 
-sys_callcounter(void){
-return counter;
-}
+    // Perform the system call to compute the SHA-256 hash
+    sha256((const uint8_t *)input, pos, hash);
 
-int
-sys_clockcycles(void){
-return r_time();
+    // Measure cycle count after computation
+    int after = clockcycles() / 10000;
+    printf("Cycle count after computation: %d\n", after);
+
+    // Calculate and display the total time taken in milliseconds
+    printf("Total time taken: %d milliseconds\n", after - before);
+    print_hash(hash);
+    printf("\n");
+    exit(0);
 }
 

@@ -1,12 +1,11 @@
 #include "types.h"
-#include "riscv.h"
-#include "defs.h"
 #include "param.h"
 #include "memlayout.h"
-#include "spinlock.h"
-#include "proc.h"
-#include "count.h"
+#include "riscv.h"
+#include "defs.h"
 #include <stddef.h>
+#include "syscall.h"
+volatile static int started = 0;
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
@@ -31,7 +30,7 @@ static const uint32_t k[64] = {
 };
 
 // Initializes SHA-256 hash values
-void sha256_init(uint32_t *state) {
+void sha256_init2(uint32_t *state) {
     state[0] = 0x6a09e667;
     state[1] = 0xbb67ae85;
     state[2] = 0x3c6ef372;
@@ -42,7 +41,7 @@ void sha256_init(uint32_t *state) {
     state[7] = 0x5be0cd19;
 }
 
-void sha256_transform(uint32_t *state, const uint8_t data[]) {
+void sha256_transform2(uint32_t *state, const uint8_t data[]) {
     uint32_t a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
 
     for (i = 0, j = 0; i < 16; ++i, j += 4) {
@@ -84,7 +83,7 @@ void sha256_transform(uint32_t *state, const uint8_t data[]) {
     state[7] += h;
 }
 
-void sha256_update(uint32_t *state, const uint8_t data[], size_t len, uint8_t *buffer, size_t *buffer_len, uint64_t *bit_len) {
+void sha256_update2(uint32_t *state, const uint8_t data[], size_t len, uint8_t *buffer, size_t *buffer_len, uint64_t *bit_len) {
     size_t i;
 
     for (i = 0; i < len; ++i) {
@@ -92,24 +91,24 @@ void sha256_update(uint32_t *state, const uint8_t data[], size_t len, uint8_t *b
         *bit_len += 8;
 
         if (*buffer_len == 64) {
-            sha256_transform(state, buffer);
+            sha256_transform2(state, buffer);
             *buffer_len = 0;
         }
     }
 }
 
-void sha256_final(uint32_t *state, uint8_t hash[], uint8_t *buffer, size_t buffer_len, uint64_t bit_len) {
+void sha256_final2(uint32_t *state, uint8_t hash[], uint8_t *buffer, size_t buffer_len, uint64_t bit_len) {
     buffer[buffer_len++] = 0x80;
 
     if (buffer_len > 56) {
         while (buffer_len < 64) buffer[buffer_len++] = 0x00;
-        sha256_transform(state, buffer);
+        sha256_transform2(state, buffer);
         buffer_len = 0;
     }
     while (buffer_len < 56) buffer[buffer_len++] = 0x00;
 
     for (int i = 0; i < 8; ++i) buffer[63 - i] = (bit_len >> (8 * i)) & 0xff;
-    sha256_transform(state, buffer);
+    sha256_transform2(state, buffer);
 
     for (int i = 0; i < 8; ++i) {
         hash[i * 4] = (state[i] >> 24) & 0xff;
@@ -119,18 +118,18 @@ void sha256_final(uint32_t *state, uint8_t hash[], uint8_t *buffer, size_t buffe
     }
 }
 
-void sha256(const uint8_t *data, size_t len, uint8_t hash[]) {
+void sha2562(const uint8_t *data, size_t len, uint8_t hash[]) {
     uint32_t state[8];
     uint8_t buffer[64];
     size_t buffer_len = 0;
     uint64_t bit_len = 0;
 
-    sha256_init(state);
-    sha256_update(state, data, len, buffer, &buffer_len, &bit_len);
-    sha256_final(state, hash, buffer, buffer_len, bit_len);
+    sha256_init2(state);
+    sha256_update2(state, data, len, buffer, &buffer_len, &bit_len);
+    sha256_final2(state, hash, buffer, buffer_len, bit_len);
 }
 
-void print_hash(uint8_t *hash) {
+void print_hash2(uint8_t *hash) {
     const char *hex_digits = "0123456789abcdef";
     char hash_string[65];
     for (int i = 0; i < 32; i++) {
@@ -141,121 +140,63 @@ void print_hash(uint8_t *hash) {
     printf("%s\n", hash_string);
 }
 
-uint64
-sys_shaVal(void)
+void
+shaVal2(void)
 {
-  const uint8_t *data = (const uint8_t *)"password";  // Corrected the casting here
-  size_t len = 8;
+  const uint8_t *data = (const uint8_t *)"hello";  // Corrected the casting here
+  size_t len = 5;
   uint8_t hash[32];  // SHA-256 produces a 32-byte (256-bit) hash
 
   // Call the sha256 function
-  sha256(data, len, hash);
-  print_hash(hash);
+  sha2562(data, len, hash);
+  print_hash2(hash);
   // Return some indication of success; if you want to use the hash
   // result in some way, you might consider other return strategies
   // depending on how sys_shaVal will be used.
-  return 0 ;  // Return 0 to indicate success (or an alternative code as needed)
+    // Return 0 to indicate success (or an alternative code as needed)
 }
 
-uint64
-sys_exit(void)
+// start() jumps here in supervisor mode on all CPUs.
+void
+main()
 {
-  int n;
-  argint(0, &n);
-  exit(n);
-  return 0;  // not reached
-}
-
-uint64
-sys_getpid(void)
-{
-  return myproc()->pid;
-}
-
-uint64
-sys_fork(void)
-{
-  return fork();
-}
-
-uint64
-sys_wait(void)
-{
-  uint64 p;
-  argaddr(0, &p);
-  return wait(p);
-}
-
-uint64
-sys_sbrk(void)
-{
-  uint64 addr;
-  int n;
-
-  argint(0, &n);
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
-  return addr;
-}
-
-uint64
-sys_sleep(void)
-{
-  int n;
-  uint ticks0;
-
-  argint(0, &n);
-  if(n < 0)
-    n = 0;
-  acquire(&tickslock);
-  ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(killed(myproc())){
-      release(&tickslock);
-      return -1;
-    }
-    sleep(&ticks, &tickslock);
+  if(cpuid() == 0){
+    consoleinit();
+    printfinit();
+    printf("\n");
+    printf("xv6 kernel is booting\n");   
+    int before = r_time()/10000;
+    printf("cycles before:%d\n",before);
+    shaVal2();
+    int after = r_time()/10000;
+    printf("cycles after:%d\n",after);
+    printf("total time taken in miliseconds: %d\n",after-before);
+    printf("\n");
+    kinit();         // physical page allocator
+    kvminit();       // create kernel page table
+    kvminithart();   // turn on paging
+    procinit();      // process table
+    trapinit();      // trap vectors
+    trapinithart();  // install kernel trap vector
+    plicinit();      // set up interrupt controller
+    plicinithart();  // ask PLIC for device interrupts
+    binit();         // buffer cache
+    iinit();         // inode table
+    fileinit();      // file table
+    virtio_disk_init(); // emulated hard disk
+    userinit();      // first user process
+    __sync_synchronize();
+    started = 1;
+  } else {
+    while(started == 0)
+      ;
+    __sync_synchronize();
+    printf("hart %d starting\n", cpuid());
+    kvminithart();    // turn on paging
+    trapinithart();   // install kernel trap vector
+    plicinithart();   // ask PLIC for device interrupts
   }
-  release(&tickslock);
-  return 0;
-}
 
-uint64
-sys_kill(void)
-{
-  int pid;
-
-  argint(0, &pid);
-  return kill(pid);
-}
-
-// return how many clock tick interrupts have occurred
-// since start.
-uint64
-sys_uptime(void)
-{
-  uint xticks;
-
-  acquire(&tickslock);
-  xticks = ticks;
-  release(&tickslock);
-  return xticks;
-}
-
-int
-sys_getyear(void)
-{
-return 2003;
-}
-
-int 
-sys_callcounter(void){
-return counter;
-}
-
-int
-sys_clockcycles(void){
-return r_time();
+  scheduler();        
 }
 
